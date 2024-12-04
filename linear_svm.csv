@@ -1,0 +1,16 @@
+penalty,loss,C,class_weight,true_positive,false_positive,true_negative,false_negative
+l1,squared_hinge,0.01,balanced,285,348,1240,52
+l2,hinge,0.01,balanced,278,332,1256,59
+l2,squared_hinge,0.01,balanced,268,294,1294,69
+l1,squared_hinge,0.1,balanced,261,261,1327,76
+l2,hinge,0.1,balanced,248,282,1306,89
+l2,squared_hinge,0.1,balanced,229,271,1317,108
+l1,squared_hinge,1.0,balanced,230,266,1322,107
+l2,hinge,1.0,balanced,230,277,1311,107
+l2,squared_hinge,1.0,balanced,219,278,1310,118
+l1,squared_hinge,10.0,balanced,225,270,1318,112
+l2,hinge,10.0,balanced,222,304,1284,115
+l2,squared_hinge,10.0,balanced,221,295,1293,116
+l1,squared_hinge,100.0,balanced,229,273,1315,108
+l2,hinge,100.0,balanced,206,250,1338,131
+l2,squared_hinge,100.0,balanced,230,272,1316,107
