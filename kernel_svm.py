@@ -27,7 +27,24 @@ def run(X, y, kfold, args):
         "true_negative": np.count_nonzero((y == 0) & (y_hat == 0)),
         "false_negative": np.count_nonzero((y == 1) & (y_hat == 0)),
     }
-    return stats
+    F1 = {
+        "positive_F1": 2
+        * stats["true_positive"]
+        / (
+            2 * stats["true_positive"]
+            + stats["false_positive"]
+            + stats["false_negative"]
+        ),
+        "negaitve_F1": 2
+        * stats["true_negative"]
+        / (
+            2 * stats["true_negative"]
+            + stats["false_positive"]
+            + stats["false_negative"]
+        ),
+    }
+    F1["mean_F1"] = (F1["positive_F1"] + F1["negaitve_F1"]) / 2
+    return stats | F1
 
 
 def grid_search(X, y, *, verbose: bool = False):
