@@ -14,7 +14,7 @@ def grid_search(X, y, *, verbose: bool = False):
     penalties = ["l1", "l2"]
     losses = ["hinge", "squared_hinge"]
 
-    kfold = KFold(n_splits=10, shuffle=True)
+    kfold = KFold(n_splits=10, shuffle=True, random_state=42)
     results = []
     for C in Cs:
         for penalty in penalties:

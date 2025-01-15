@@ -12,7 +12,7 @@ def glm(X, y, target: str, *, verbose: bool = False):
     epsilon = 0.01
     z = epsilon + (1 - 2 * epsilon) * y
 
-    kfold = KFold(n_splits=10, shuffle=True)
+    kfold = KFold(n_splits=10, shuffle=True, random_state=42)
     params = dict(target=target)
     y_hat = np.zeros(y.shape)
     for train, test in kfold.split(X, y):
