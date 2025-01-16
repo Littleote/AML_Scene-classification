@@ -89,8 +89,8 @@ def run(X, y, kfold, kernel_args, svm_args):
 def grid_search(X, y, *, verbose: bool = False):
     n = X.shape[1]
 
-    Cs = [10**i for i in range(-1, 3 + 1)]
-    scales = [10**i for i in range(0, 5)]
+    Cs = [10**i for i in range(-2, 1 + 1)]
+    scales = [10**i for i in range(-1, 2)]
     gammas = [np.power(n, i / 2) for i in range(-4, 0 + 1)]
 
     kfold = KFold(n_splits=10, shuffle=True, random_state=42)

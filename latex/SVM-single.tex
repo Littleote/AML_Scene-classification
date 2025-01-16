@@ -1,0 +1,23 @@
+\begin{tabular}{llr}
+\toprule
+ &  & F1-score \\
+kernel & Hyper-parameters &  \\
+\midrule
+\multirow[t]{3}{*}{linear} & C: 0.1, transformation: root 4, penalty: l1, loss: squared_hinge & 0.629940 \\
+ & C: 0.01, transformation: root 4, penalty: l2, loss: hinge & 0.627193 \\
+ & C: 0.01, transformation: root 4, penalty: l2, loss: squared_hinge & 0.618824 \\
+\cline{1-3}
+\multirow[t]{3}{*}{poly} & C: 0.1, degree: 5.0, gamma: 0.0034013605442176, coef0: 1.0 & 0.692206 \\
+ & C: 1.0, degree: 3.0, gamma: 0.0034013605442176, coef0: 1.0 & 0.687500 \\
+ & C: 0.01, degree: 2.0, gamma: 0.0583211843519804, coef0: 1.0 & 0.684636 \\
+\cline{1-3}
+\multirow[t]{3}{*}{precomputed} & C: 0.1, gamma: 0.0034013605442176, scale: 0.1 & 0.512338 \\
+ & C: 10.0, gamma: 1.156925355176084e-05, scale: 1.0 & 0.480243 \\
+ & C: 1.0, gamma: 0.0001983713753468, scale: 1.0 & 0.478668 \\
+\cline{1-3}
+\multirow[t]{3}{*}{rbf} & C: 10.0, gamma: 0.0034013605442176 & 0.690852 \\
+ & C: 1.0, gamma: 0.0034013605442176 & 0.687166 \\
+ & C: 100.0, gamma: 0.0034013605442176 & 0.676236 \\
+\cline{1-3}
+\bottomrule
+\end{tabular}
