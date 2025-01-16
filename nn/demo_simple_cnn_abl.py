@@ -22,7 +22,7 @@ DATA_PATH = "../scene.arff"
 # classes = ['Beach', 'Sunset', 'FallFoliage', 'Field', 'Mountain', 'Urban']
 
 
-# DATA_PATH = "./luv_transform_ablation/miml-image-data/scene_data_manual.arff"
+DATA_PATH = "./luv_transform_ablation/miml-image-data/scene_data_manual.arff"
 
 
 # device config
@@ -51,7 +51,7 @@ def process(df: pd.DataFrame):
     data = df[attr].to_numpy(dtype=np.float32)
     targets = df[classes].apply(lambda s: s.map(int)).to_numpy(dtype=np.float32)
 
-    return data, targets
+    return data, targets, classes
 
 def compute_class_weights(labels):
     """Compute class weights based on the inverse frequency of each class."""
@@ -69,7 +69,7 @@ class SceneDataset(Dataset):
     def __init__(self, device, train, test_size=0.2, transform=None, reshape_to_img =False):
         #data loading
         df = load(DATA_PATH)
-        X, y = process(df)
+        X, y, classes = process(df)
 
         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=1234)
         # X_train, y_train, X_test, y_test = iterative_train_test_split(X, y, test_size=0.2)
@@ -89,6 +89,8 @@ class SceneDataset(Dataset):
         self.transform = transform
 
         self.class_weights = compute_class_weights(y)
+
+        self.classes = classes
 
     def __getitem__(self, index):
         sample = self.x[index], self.y[index]
@@ -124,7 +126,7 @@ def get_dataloaders(flipping=False):
 
 
 
-    return train_loader, test_loader, train_dataset.class_weights
+    return train_loader, test_loader, train_dataset.class_weights, train_dataset.classes
 
 
 def get_dataloaders_img(flipping=False):
@@ -138,7 +140,7 @@ def get_dataloaders_img(flipping=False):
     train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
     test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False)
 
-    return train_loader, test_loader, train_dataset.class_weights
+    return train_loader, test_loader, train_dataset.class_weights, train_dataset.classes
 
 ########################################################################################################################
 # MODEL SPECIFICATION
@@ -439,7 +441,7 @@ def plot_metrics(train_losses, val_f1_scores, val_hamming_losses, val_subset_acc
 
 if __name__ == "__main__":
     # Basic plain datasets (no transforms)
-    train_loader, test_loader, class_weights = get_dataloaders_img()
+    train_loader, test_loader, class_weights, classes = get_dataloaders_img()
 
     # TODO: test this
     # Random horizontal flipping applied datasets (no transforms)
@@ -494,7 +496,7 @@ if __name__ == "__main__":
     y_pred_binary = (y_pred > BINARY_CRITERION).astype(int)
 
     print("Classification Report:")
-    for i, class_name in enumerate(['Beach', 'Sunset', 'FallFoliage', 'Field', 'Mountain', 'Urban']):
+    for i, class_name in enumerate(classes):
         print(f"\nClass: {class_name}")
         print(classification_report(y_true[:, i], y_pred_binary[:, i]))
 
