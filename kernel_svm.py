@@ -60,7 +60,6 @@ def grid_search(X, y, *, verbose: bool = False):
     gammas = [np.power(n, i / 2) for i in range(-4, 0 + 1)]
     coef0 = [0, 1]
     kernels = {
-        "linear": {},
         "poly": {"degree": degrees, "gamma": gammas, "coef0": coef0},
         "rbf": {"gamma": gammas},
     }
