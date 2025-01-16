@@ -108,8 +108,6 @@ def compute_class_weights(labels):
 
 
 from skmultilearn.model_selection import iterative_train_test_split
-
-# TODO: img loading 49*2*3 | 49*3 or 49*6 reshaped
 class SceneDataset(Dataset):
     def __init__(self, device, train, test_size=0.2, transform=None):
         #data loading
@@ -143,22 +141,22 @@ class SceneDataset(Dataset):
     def __len__(self):
         return self.n_samples
 
-
+# TODO: make work
 class HorizontalFlip:
     def __init__(self, probability=0.4):
         self.probability = probability
 
     def __call__(self, sample):
         x,y = sample
-        if random.randrange(0,1) >= 0.5:
-            x = torch.flip(x, [0, 1])
+        if random.uniform(0, 1) >= 0.5:
+            x = torch.fliplr(x)
         return x, y
 
 
 def get_dataloaders(flipping=False):
     if flipping:
-        train_dataset = SceneDataset(device=device, transform=HorizontalFlip, train=True)
-        test_dataset = SceneDataset(device=device, transform=HorizontalFlip, train=False)
+        train_dataset = SceneDataset(device=device, transform=HorizontalFlip(), train=True)
+        test_dataset = SceneDataset(device=device, transform=HorizontalFlip(), train=False)
     else:
         train_dataset = SceneDataset(device=device, train=True)
         test_dataset = SceneDataset(device=device, train=False)
@@ -174,84 +172,85 @@ def get_dataloaders(flipping=False):
 ########################################################################################################################
 # MODEL SPECIFICATION
 
-class UrbanSceneCNN(nn.Module):
-    def __init__(self, input_dim, output_dim):
-        super(UrbanSceneCNN, self).__init__()
-
-        self.conv1 = nn.Conv2d(in_channels=input_dim, out_channels=32, kernel_size=3, padding=1,  device=device)
-        # self.bn1 = nn.BatchNorm2d(32,  device=device)
-
-        self.conv2 = nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3, padding=1,  device=device)
-        # self.bn2 = nn.BatchNorm2d(64,  device=device)
-
-        self.conv3 = nn.Conv2d(in_channels=64, out_channels=128, kernel_size=3, padding=1,  device=device)
-        # self.bn3 = nn.BatchNorm2d(128,  device=device)
-
-        self.pool = nn.MaxPool2d(kernel_size=2, stride=2, padding=0)
-        # self.pool = nn.MaxPool2d(kernel_size=2, stride=1, padding=0)
-
-        # self.dropout = nn.Dropout(0.25)
-        self.fc1 = nn.Linear(128 * 16*16, 64,  device=device)
-        # self.fc1 = nn.Linear(128 * 16*16, 64,  device=device)
-
-        # self.dropout = nn.Dropout(0.25)
-        self.fc2 = nn.Linear(64, output_dim,  device=device)
-        self.output_sigmoid = nn.Sigmoid()
-    def forward(self, x):
-        # x = self.pool(torch.relu(self.bn1(self.conv1(x))))
-        # x = self.pool(torch.relu(self.bn2(self.conv2(x))))
-        # x = self.pool(torch.relu(self.bn3(self.conv3(x))))
-
-        x = self.pool(torch.relu(self.conv1(x)))
-        x = self.pool(torch.relu(self.conv2(x)))
-        x = self.pool(torch.relu(self.conv3(x)))
-
-        x = x.view(x.size(0), -1)  # Flatten
-        # x = x.contiguous().view(x.size(0), -1)  # Flatten
-        x = torch.relu(self.fc1(x))
-        # x = self.dropout(x)
-        x = self.fc2(x)
-        return self.output_sigmoid(x)
-
-# # AlexNet
 # class UrbanSceneCNN(nn.Module):
-#     def __init__(self):
+#     def __init__(self, input_dim, output_dim):
 #         super(UrbanSceneCNN, self).__init__()
-#         self.features = nn.Sequential(
-#             nn.Conv2d(in_channels=3, out_channels=64, kernel_size=3, stride=1, padding=1),  # Conv1
-#             nn.ReLU(),
-#             nn.MaxPool2d(kernel_size=2, stride=2, padding=0),  # Pool1 -> Output: 64 x 3 x 3
 #
-#             nn.Conv2d(in_channels=64, out_channels=192, kernel_size=3, stride=1, padding=1),  # Conv2
-#             nn.ReLU(),
-#             nn.MaxPool2d(kernel_size=2, stride=1, padding=0),  # Pool2 -> Output: 192 x 2 x 2
+#         self.conv1 = nn.Conv2d(in_channels=input_dim, out_channels=32, kernel_size=3, padding=1,  device=device)
+#         # self.bn1 = nn.BatchNorm2d(32,  device=device)
 #
-#             nn.Conv2d(in_channels=192, out_channels=384, kernel_size=3, stride=1, padding=1),  # Conv3
-#             nn.ReLU(),
+#         self.conv2 = nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3, padding=1,  device=device)
+#         # self.bn2 = nn.BatchNorm2d(64,  device=device)
 #
-#             nn.Conv2d(in_channels=384, out_channels=256, kernel_size=3, stride=1, padding=1),  # Conv4
-#             nn.ReLU(),
+#         self.conv3 = nn.Conv2d(in_channels=64, out_channels=128, kernel_size=3, padding=1,  device=device)
+#         # self.bn3 = nn.BatchNorm2d(128,  device=device)
 #
-#             nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, stride=1, padding=1),  # Conv5
-#             nn.ReLU(),
-#             nn.MaxPool2d(kernel_size=2, stride=1, padding=0)  # Pool3 -> Output: 256 x 1 x 1
-#         )
+#         self.pool = nn.MaxPool2d(kernel_size=2, stride=2, padding=0)
+#         # self.pool = nn.MaxPool2d(kernel_size=2, stride=1, padding=0)
 #
-#         self.classifier = nn.Sequential(
-#             nn.Dropout(0.5),
-#             nn.Linear(256 * 1 * 1, 4096),  # Fully connected 1
-#             nn.ReLU(),
-#             nn.Dropout(0.5),
-#             nn.Linear(4096, 4096),  # Fully connected 2
-#             nn.ReLU(),
-#             nn.Linear(4096, 6)  # Fully connected 3 -> Output layer
-#         )
+#         # self.dropout = nn.Dropout(0.25)
+#         self.fc1 = nn.Linear(128 * 16*16, 64,  device=device)
+#         # self.fc1 = nn.Linear(128 * 16*16, 64,  device=device)
 #
+#         # self.dropout = nn.Dropout(0.25)
+#         self.fc2 = nn.Linear(64, output_dim,  device=device)
+#         self.output_sigmoid = nn.Sigmoid()
 #     def forward(self, x):
-#         x = self.features(x)
-#         x = x.view(x.size(0), -1)  # Flatten feature map
-#         x = self.classifier(x)
-#         return x
+#         # x = self.pool(torch.relu(self.bn1(self.conv1(x))))
+#         # x = self.pool(torch.relu(self.bn2(self.conv2(x))))
+#         # x = self.pool(torch.relu(self.bn3(self.conv3(x))))
+#
+#         x = self.pool(torch.relu(self.conv1(x)))
+#         x = self.pool(torch.relu(self.conv2(x)))
+#         x = self.pool(torch.relu(self.conv3(x)))
+#
+#         x = x.view(x.size(0), -1)  # Flatten
+#         # x = x.contiguous().view(x.size(0), -1)  # Flatten
+#         x = torch.relu(self.fc1(x))
+#         # x = self.dropout(x)
+#         x = self.fc2(x)
+#         return self.output_sigmoid(x)
+
+# AlexNet
+class UrbanSceneCNN(nn.Module):
+    def __init__(self,  input_dim, output_dim):
+        super(UrbanSceneCNN, self).__init__()
+        self.features = nn.Sequential(
+            nn.Conv2d(in_channels=input_dim, out_channels=64, kernel_size=3, stride=1, padding=1, device=device),  # Conv1
+            nn.ReLU(),
+            nn.MaxPool2d(kernel_size=2, stride=2, padding=0),  # Pool1 -> Output: 64 x 3 x 3
+
+            nn.Conv2d(in_channels=64, out_channels=192, kernel_size=3, stride=1, padding=1,device=device),  # Conv2
+            nn.ReLU(),
+            nn.MaxPool2d(kernel_size=2, stride=1, padding=0),  # Pool2 -> Output: 192 x 2 x 2
+
+            nn.Conv2d(in_channels=192, out_channels=384, kernel_size=3, stride=1, padding=1,device=device),  # Conv3
+            nn.ReLU(),
+
+            nn.Conv2d(in_channels=384, out_channels=256, kernel_size=3, stride=1, padding=1,device=device),  # Conv4
+            nn.ReLU(),
+
+            nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, stride=1, padding=1,device=device),  # Conv5
+            nn.ReLU(),
+            nn.MaxPool2d(kernel_size=2, stride=1, padding=0)  # Pool3 -> Output: 256 x 1 x 1
+        )
+
+        self.classifier = nn.Sequential(
+            nn.Dropout(0.5),
+            nn.Linear(256 * 62*62, 4096,device=device),  # Fully connected 1
+            nn.ReLU(),
+            nn.Dropout(0.5),
+            nn.Linear(4096, 4096,device=device),  # Fully connected 2
+            nn.ReLU(),
+            nn.Linear(4096, output_dim, device=device)  # Fully connected 3 -> Output layer
+        )
+
+    def forward(self, x):
+        x = self.features(x)
+        x = x.view(x.size(0), -1)  # Flatten feature map
+        x = self.classifier(x)
+        return x
+
 
 
 class Criterion(nn.Module):
@@ -260,7 +259,8 @@ class Criterion(nn.Module):
         if type == "BCELoss":
             self.loss = nn.BCELoss()
         else:
-            self.loss = torch.nn.MultiLabelSoftMarginLoss() # weights
+            # self.loss = torch.nn.MultiLabelSoftMarginLoss() # weights
+            self.loss = torch.nn.BCEWithLogitsLoss(weights)
 
     def forward(self, pred, target):
         return ((pred - target)**2).mean()
@@ -277,7 +277,6 @@ class ModelTrainer:
         self.train_losses = []
         self.gradient_norms = []
 
-    # TODO: add crosstraining
     def train_model(self):
 
         model.train()
@@ -309,6 +308,44 @@ class ModelTrainer:
 
 ########################################################################################################################
 # MODEL EVALUATION
+
+def compute_alpha_score(predictions, labels, alpha=2.0, beta=1.0, gamma=0.25):
+    diff_labels_sub_preds = labels - predictions
+    diff_labels_sub_preds[diff_labels_sub_preds < 1] = 0
+
+    diff_preds_sub_labels = predictions - labels
+    diff_preds_sub_labels[diff_preds_sub_labels < 1] = 0
+
+    missed = np.asarray([x.sum() for x in diff_labels_sub_preds[0]])
+    false_positives = np.asarray([x.sum() for x in diff_preds_sub_labels[0]])
+
+    union = (labels + predictions)
+    union[union > 1] = 1
+
+    union = np.asarray([x.sum() for x in union[0]])
+
+    # Compute alpha score for all
+    alpha_scores = 1 - ((beta * missed + gamma * false_positives) / union)**alpha
+    # Accuracy on the whole dataset
+    accuracy_on_dataset = np.sum(alpha_scores) * (1 / labels.shape[1])
+
+    # Per class precision/recall
+    alpha_scores = np.asarray([alpha_scores])
+    results = {"recall_C": [], "precision_C": []}
+    for C in range(labels.shape[2]):
+        per_label_alpha_scores = alpha_scores[labels[:, :, C] > 0]
+        recal_c = np.sum(per_label_alpha_scores) * (1 / per_label_alpha_scores.size)
+
+        results["recall_C"].append(recal_c)
+
+        per_pred_alpha_scores = alpha_scores[predictions[:, :, C] > 0]
+        precision_c = np.sum(per_pred_alpha_scores) * ((1 / per_pred_alpha_scores.size) if per_pred_alpha_scores.size > 0 else 0.0001)
+
+        results["precision_C"].append(precision_c)
+
+
+    return accuracy_on_dataset, results
+
 class ModelEvaluator:
     def __init__(self, model, test_loader, binary_threshold=0.5):
         self.model = model
@@ -320,6 +357,10 @@ class ModelEvaluator:
         self.val_hamming_losses = []
         self.val_subset_accuracies = []
         self.lrap_scores = []
+
+        self.alpha_scores = []
+        self.per_class = {"recall_C": [], "precision_C": []}
+
 
         self.results = dict()
 
@@ -357,9 +398,78 @@ class ModelEvaluator:
             self.val_subset_accuracies.append(val_subset_accuracy)
             self.lrap_scores.append(lrap)
 
+            alpha, per_class = compute_alpha_score(np.asarray([all_preds]), np.asarray([all_labels]), 1.0, 1.0, 0.25)
+            self.alpha_scores.append(alpha)
 
-# Util plotting fnc
-def plot_metrics(train_losses, val_f1_scores, val_hamming_losses, val_subset_accuracies, lrap_scores, gradient_norms):
+            for key, val in per_class.items():
+                print(f"Alpha based {key}: {val}")
+                self.per_class[key].append(val)
+
+
+# # Util plotting fnc
+# def plot_metrics(train_losses, val_f1_scores, val_hamming_losses, val_subset_accuracies, lrap_scores, gradient_norms):
+#     epochs = range(1, len(train_losses) + 1)
+#
+#     plt.figure(figsize=(16, 10))
+#
+#     # Training Loss
+#     plt.subplot(3, 3, 1)
+#     plt.plot(epochs, train_losses, label="Training Loss", color='blue')
+#     plt.xlabel("Epochs")
+#     plt.ylabel("Loss")
+#     plt.title("Training Loss")
+#     plt.grid()
+#     plt.legend()
+#
+#     # Validation Accuracy
+#     plt.subplot(3, 3, 2)
+#     plt.plot(epochs, val_subset_accuracies, label="Validation Subset Accuracies", color='green')
+#     plt.xlabel("Epochs")
+#     plt.ylabel("Subset Accuracy")
+#     plt.title("Subset Accuracies")
+#     plt.grid()
+#     plt.legend()
+#
+#     # Validation F1 Score
+#     plt.subplot(3, 3, 3)
+#     plt.plot(epochs, val_f1_scores, label="Validation Micro F1 Score", color='red')
+#     plt.xlabel("Epochs")
+#     plt.ylabel("F1 Score")
+#     plt.title("Validation Micro F1 Score")
+#     plt.grid()
+#     plt.legend()
+#
+#     # Validation Hamming Losses
+#     plt.subplot(3, 3, 4)
+#     plt.plot(epochs, val_hamming_losses, label="Hamming loss", color='brown')
+#     plt.xlabel("Epochs")
+#     plt.ylabel("Hamming loss")
+#     plt.title("Validation Hamming Losses")
+#     plt.grid()
+#     plt.legend()
+#
+#     # Validation Lrap Score
+#     plt.subplot(3, 3, 5)
+#     plt.plot(epochs, lrap_scores, label="Validation lrap Score", color='orange')
+#     plt.xlabel("Epochs")
+#     plt.ylabel("Lrap Score")
+#     plt.title("Validation Lrap Score")
+#     plt.grid()
+#     plt.legend()
+#
+#     # Gradient Norms
+#     plt.subplot(3, 3, 6)
+#     plt.plot(epochs, gradient_norms, label="Gradient Norms", color='purple')
+#     plt.xlabel("Epochs")
+#     plt.ylabel("Gradient Norm")
+#     plt.title("Gradient Norms")
+#     plt.grid()
+#     plt.legend()
+#
+#     plt.tight_layout()
+#     plt.show()
+
+def plot_metrics(train_losses, val_f1_scores, val_hamming_losses, lrap_scores, alpha_acc, alpha_per_c, gradient_norms):
     epochs = range(1, len(train_losses) + 1)
 
     plt.figure(figsize=(16, 10))
@@ -373,12 +483,20 @@ def plot_metrics(train_losses, val_f1_scores, val_hamming_losses, val_subset_acc
     plt.grid()
     plt.legend()
 
-    # Validation Accuracy
+    # # Validation Loss
+    # plt.subplot(3, 3, 2)
+    # plt.plot(epochs, validation_losses, label="Validation Loss", color='green')
+    # plt.xlabel("Epochs")
+    # plt.ylabel("Validation Loss")
+    # plt.title("Validation Loss")
+    # plt.grid()
+    # plt.legend()
+
     plt.subplot(3, 3, 2)
-    plt.plot(epochs, val_subset_accuracies, label="Validation Subset Accuracies", color='green')
+    plt.plot(epochs, alpha_acc, label="Alpha score accuracy", color='purple')
     plt.xlabel("Epochs")
-    plt.ylabel("Subset Accuracy")
-    plt.title("Subset Accuracies")
+    plt.ylabel("Alpha Accuracy")
+    plt.title("Alpha score accuracy")
     plt.grid()
     plt.legend()
 
@@ -421,10 +539,52 @@ def plot_metrics(train_losses, val_f1_scores, val_hamming_losses, val_subset_acc
     plt.tight_layout()
     plt.show()
 
+    ## PLOTTING PER CLASS PRECISION AND RECALL
+    classes = ['Beach', 'Sunset', 'FallFoliage', 'Field', 'Mountain', 'Urban']
+    epochs = range(1, len(train_losses) + 1)
+    plt.figure(figsize=(16, 10))
+
+    i = 0
+    for key, value in alpha_per_c.items():
+        value = np.asarray(value)
+        i += 1
+        for c in range(value.shape[1]):
+            plt.subplot(6, 2, (i-1) * value.shape[1] +  c+1)
+            plt.plot(epochs, (value.T)[c], label=f"{key} {classes[c]}", color='purple' if key.startswith("precision") else 'green')
+            plt.xlabel("Epochs")
+            plt.ylabel(f"{key}")
+            plt.title(f"{key} {classes[c]}")
+            plt.grid()
+            plt.legend()
+
+    plt.tight_layout()
+    plt.show()
+
+
+class EarlyStopper:
+    def __init__(self, patience=1, max_delta=0):
+        self.patience = patience
+        self.max_delta = max_delta
+        self.counter = 0
+        self.max_accuracy = float('-inf')
+        self.snapshot_results = None
+
+    def early_stop(self, current_acc, snapshot):
+        if current_acc > self.max_accuracy:
+            self.max_accuracy = current_acc
+            self.snapshot_results = snapshot
+            self.counter = 0
+        elif current_acc < (self.max_accuracy - self.max_delta):
+            self.counter += 1
+            if self.counter >= self.patience:
+                return True
+        return False
+
+
 
 if __name__ == "__main__":
     # Basic plain datasets (no transforms)
-    train_loader, test_loader, class_weights, class_list = get_dataloaders()
+    train_loader, test_loader, class_weights, class_list = get_dataloaders(flipping=False)
 
     # TODO: test this
     # Random horizontal flipping applied datasets (no transforms)
@@ -433,7 +593,7 @@ if __name__ == "__main__":
     examples = iter(train_loader)
     samples, labels = next(examples)
 
-    # TODO: correct
+
     input_dim = samples[0].shape[0]
     output_dim = labels[0].shape[0]
 
@@ -445,24 +605,37 @@ if __name__ == "__main__":
     model_trainer = ModelTrainer(model, train_loader)
     model_evaluator = ModelEvaluator(model, test_loader)
 
+    early_stopper = EarlyStopper(patience=5, max_delta=10)
+
+
     # TRAIN LOOP
     for epoch in range(EPOCHS):
         model_trainer.train_model()
 
         model_evaluator.evaluate_model()
-        # model_evaluator.print_results(epoch)
-        print(f"Epoch {epoch + 1}/{EPOCHS} | Loss: {model_trainer.train_losses[-1]:.3f} "
-              f"| Micro F1: {model_evaluator.val_f1_scores[-1]:.3f} |"
-              f"| Hamming losses: {model_evaluator.val_hamming_losses[-1]:.3f} |"
-              f"| Subset Accuracies: {model_evaluator.val_subset_accuracies[-1]:.3f} |"
-              f"| Lrap scores: {model_evaluator.lrap_scores[-1]:.3f} |"
-              f" Grad Norm: {model_trainer.gradient_norms[-1]:.3f}")
 
+        print(f"Epoch {epoch + 1}/{EPOCHS} | Training Loss: {model_trainer.train_losses[-1]:.3f} "
+              f"| Hamming losses: {model_evaluator.val_hamming_losses[-1]:.3f} "
+              f"| Lrap scores: {model_evaluator.lrap_scores[-1]:.3f} "
+              f"| Overall macro avg F1 scores: {model_evaluator.val_f1_scores[-1]:.3f} "
+              f"| Alpha score accuracy: {model_evaluator.alpha_scores[-1]:.3f}")
 
+        snapshot_results = {"Hamming losses": model_evaluator.val_hamming_losses[-1],
+                            "LRAP": model_evaluator.lrap_scores[-1],
+                            "F1 micro": model_evaluator.val_f1_scores[-1],
+                            "per_class alpha based metrics: ": {"recall": model_evaluator.per_class["recall_C"][-1],
+                                                                "precision": model_evaluator.per_class["precision_C"][
+                                                                    -1]}}
+
+        if early_stopper.early_stop(model_evaluator.alpha_scores[-1], snapshot_results):
+            break
+
+    print(f"Best alpha accuracy: {early_stopper.max_accuracy}")
+    print(f"SNAPSHOT RESULTS: {early_stopper.snapshot_results}")
 
     # Plot metrics
     plot_metrics(model_trainer.train_losses, model_evaluator.val_f1_scores, model_evaluator.val_hamming_losses,
-                 model_evaluator.val_subset_accuracies, model_evaluator.lrap_scores, model_trainer.gradient_norms)
+                 model_evaluator.lrap_scores, model_evaluator.alpha_scores, model_evaluator.per_class, model_trainer.gradient_norms)
 
 
     # Final evaluation

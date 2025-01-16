@@ -286,7 +286,7 @@ class OvAEvaluator:
 
 
 
-# Util plotting fnc
+
 def plot_metrics(train_losses, validation_losses, val_f1_scores, val_hamming_losses, lrap_scores, alpha_acc, alpha_per_c):
     epochs = range(1, len(train_losses) + 1)
 
@@ -380,21 +380,24 @@ def plot_metrics(train_losses, validation_losses, val_f1_scores, val_hamming_los
 
 
 class EarlyStopper:
-    def __init__(self, patience=1, min_delta=0):
+    def __init__(self, patience=1, max_delta=0):
         self.patience = patience
-        self.min_delta = min_delta
+        self.max_delta = max_delta
         self.counter = 0
-        self.min_validation_loss = float('inf')
+        self.max_accuracy = float('-inf')
+        self.snapshot_results = None
 
-    def early_stop(self, validation_loss):
-        if validation_loss < self.min_validation_loss:
-            self.min_validation_loss = validation_loss
+    def early_stop(self, current_acc, snapshot):
+        if current_acc > self.max_accuracy:
+            self.max_accuracy = current_acc
+            self.snapshot_results = snapshot
             self.counter = 0
-        elif validation_loss > (self.min_validation_loss + self.min_delta):
+        elif current_acc < (self.max_accuracy - self.max_delta):
             self.counter += 1
             if self.counter >= self.patience:
                 return True
         return False
+
 
 # Main script
 if __name__ == "__main__":
@@ -417,7 +420,7 @@ if __name__ == "__main__":
     trainer = OvATrainer(models, train_loader, criterion, optimizers)
     evaluator = OvAEvaluator(models, test_loader)
 
-    early_stopper = EarlyStopper(patience=5, min_delta=10)
+    early_stopper = EarlyStopper(patience=5, max_delta=10)
 
     # MAIN LOOP
     for epoch in range(EPOCHS):
@@ -435,12 +438,17 @@ if __name__ == "__main__":
               f"| Overall macro avg F1 scores: {evaluator.overall_f1_scores[-1]:.3f} "
               f"Alpha score accuracy: {evaluator.alpha_scores[-1]:.3f}")
 
+        snapshot_results = {"Hamming losses": evaluator.val_hamming_losses[-1],
+                            "LRAP": evaluator.lrap_scores[-1],
+                            "F1 micro": evaluator.overall_f1_scores[-1],
+                            "per_class alpha based metrics: ": {"recall": evaluator.per_class["recall_C"][-1],
+                                                                "precision": evaluator.per_class["precision_C"][-1]}}
 
-
-        if early_stopper.early_stop(evaluator.alpha_scores[-1]):
+        if early_stopper.early_stop(evaluator.alpha_scores[-1], snapshot_results):
             break
 
-    print(f"Best alpha accuracy: {early_stopper.min_validation_loss}")
+    print(f"Best alpha accuracy: {early_stopper.max_accuracy}")
+    print(f"SNAPSHOT RESULTS: {early_stopper.snapshot_results}")
 
     plot_metrics(trainer.train_losses, evaluator.val_losses, evaluator.overall_f1_scores, evaluator.val_hamming_losses,
                  evaluator.lrap_scores, evaluator.alpha_scores, evaluator.per_class)

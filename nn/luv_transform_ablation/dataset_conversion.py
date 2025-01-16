@@ -65,16 +65,16 @@ def compute_spatial_color_moments(image_path):
     # reshape into 7x7 grid for each Luv channel
 
     # Convert Luv to RGB
-    # rgb_image = rgb_means.reshape(7,7,3)
-    # # Step 3: Visualize the Reconstructed Low-Resolution Image
-    # plt.figure(figsize=(5, 5))
-    # plt.imshow(rgb_image)
-    # plt.title("Reconstructed Low-Resolution Image all RGB channels")
-    # plt.axis("off")
-    # plt.show()
-    #
-    # cv2.imshow('image', image[...,::-1])
-    # cv2.waitKey(0)
+    rgb_image = rgb_means.reshape(7,7,3)
+    # Step 3: Visualize the Reconstructed Low-Resolution Image
+    plt.figure(figsize=(5, 5))
+    plt.imshow(rgb_image)
+    plt.title("Reconstructed Low-Resolution Image all RGB channels")
+    plt.axis("off")
+    plt.show()
+
+    cv2.imshow('image', image[...,::-1])
+    cv2.waitKey(0)
 
     return np.array(feature_vector)
 
