@@ -28,7 +28,7 @@ INPUT_SIZE = 49 # 7x7
 
 BATCH_SIZE = 16
 LR = 0.001 # Learning rate
-EPOCHS = 40
+EPOCHS = 100
 
 TRAIN_TEST_SPLIT = 0.8
 BINARY_CRITERION = 0.5
@@ -220,9 +220,10 @@ class OvATrainer:
         self.train_loader = train_loader
         self.criterion = criterion
         self.optimizers = optimizers
-        self.train_losses = [[] for _ in models]
+        self.train_losses = []
 
     def train_one_epoch(self):
+        train_losses_all = []
         for class_idx, model in enumerate(self.models):
             model.train()
             epoch_loss = 0
@@ -240,7 +241,8 @@ class OvATrainer:
                 epoch_loss += loss.item()
 
             avg_loss = epoch_loss / len(self.train_loader)
-            self.train_losses[class_idx].append(avg_loss)
+            train_losses_all.append(avg_loss)
+        self.train_losses.append(np.sum(np.asarray(train_losses_all)) / len(self.models))
 ########################################################################################################################
 # MODEL EVALUATION
 
@@ -262,12 +264,27 @@ def compute_alpha_score(predictions, labels, alpha=2.0, beta=1.0, gamma=0.25):
 
     union = np.asarray([x.sum() for x in union[0]])
 
-    alpha_score = np.sum(1 - ((beta * missed + gamma * false_positives) / union)**alpha) / labels.size
+    # Compute alpha score for all
+    alpha_scores = 1 - ((beta * missed + gamma * false_positives) / union)**alpha
+    # Accuracy on the whole dataset
+    accuracy_on_dataset = np.sum(alpha_scores) * (1 / labels.shape[1])
+
+    # Per class precision/recall
+    alpha_scores = np.asarray([alpha_scores])
+    results = {"recall_C": [], "precision_C": []}
+    for C in range(labels.shape[2]):
+        per_label_alpha_scores = alpha_scores[labels[:, :, C] > 0]
+        recal_c = np.sum(per_label_alpha_scores) * (1 / per_label_alpha_scores.size)
+
+        results["recall_C"].append(recal_c)
+
+        per_pred_alpha_scores = alpha_scores[predictions[:, :, C] > 0]
+        precision_c = np.sum(per_pred_alpha_scores) * ((1 / per_pred_alpha_scores.size) if per_pred_alpha_scores.size > 0 else 0.0001)
+
+        results["precision_C"].append(precision_c)
 
 
-    # Recall
-
-    return alpha_score
+    return accuracy_on_dataset, results
 
 
 class ModelEvaluator:
@@ -331,7 +348,12 @@ class OvAEvaluator:
 
         # Metrics storage
         self.val_f1_scores = [[] for _ in models]
+        self.overall_f1_scores = []
         self.alpha_scores = []
+        self.per_class = {"recall_C": [], "precision_C": []}
+
+        self.val_hamming_losses = []
+        self.lrap_scores = []
 
     def evaluate(self):
         all_preds = []
@@ -359,14 +381,31 @@ class OvAEvaluator:
             f1 = f1_score(labels, preds, average='binary')
             self.val_f1_scores[class_idx].append(f1)
 
-        alpha = compute_alpha_score(np.asarray(all_preds).T, np.asarray(all_labels).T, 1.0, 1.0, 0.25)
+
+        alpha, per_class = compute_alpha_score(np.asarray(all_preds).T, np.asarray(all_labels).T, 1.0, 1.0, 0.25)
         self.alpha_scores.append(alpha)
+
+        all_preds_temp = (np.asarray(all_preds).T)[0]
+        all_labels_temp = (np.asarray(all_labels).T)[0]
+
+        lrap = label_ranking_average_precision_score(all_labels_temp, all_preds_temp)
+        self.lrap_scores.append(lrap)
+
+        val_hamming_loss = hamming_loss(all_labels_temp, all_preds_temp)
+        self.val_hamming_losses.append(val_hamming_loss)
+
+        overall_f1 = f1_score(all_labels_temp, all_preds_temp, average='micro')
+        self.overall_f1_scores.append(overall_f1)
+
+        for key, val in per_class.items():
+            print(f"Alpha based {key}: {val}")
+            self.per_class[key].append(val)
         return np.hstack(all_preds), np.hstack(all_labels)
 
 
 
 # Util plotting fnc
-def plot_metrics(train_losses, val_f1_scores, val_hamming_losses, val_subset_accuracies, lrap_scores, gradient_norms):
+def plot_metrics(train_losses, val_f1_scores, val_hamming_losses, lrap_scores, alpha_acc, alpha_per_c):
     epochs = range(1, len(train_losses) + 1)
 
     plt.figure(figsize=(16, 10))
@@ -381,11 +420,19 @@ def plot_metrics(train_losses, val_f1_scores, val_hamming_losses, val_subset_acc
     plt.legend()
 
     # Validation Accuracy
+    # plt.subplot(3, 3, 2)
+    # plt.plot(epochs, val_subset_accuracies, label="Validation Subset Accuracies", color='green')
+    # plt.xlabel("Epochs")
+    # plt.ylabel("Subset Accuracy")
+    # plt.title("Subset Accuracies")
+    # plt.grid()
+    # plt.legend()
+
     plt.subplot(3, 3, 2)
-    plt.plot(epochs, val_subset_accuracies, label="Validation Subset Accuracies", color='green')
+    plt.plot(epochs, alpha_acc, label="Alpha score accuracy", color='green')
     plt.xlabel("Epochs")
-    plt.ylabel("Subset Accuracy")
-    plt.title("Subset Accuracies")
+    plt.ylabel("Alpha Accuracy")
+    plt.title("Alpha score accuracy")
     plt.grid()
     plt.legend()
 
@@ -416,18 +463,38 @@ def plot_metrics(train_losses, val_f1_scores, val_hamming_losses, val_subset_acc
     plt.grid()
     plt.legend()
 
-    # Gradient Norms
-    plt.subplot(3, 3, 6)
-    plt.plot(epochs, gradient_norms, label="Gradient Norms", color='purple')
-    plt.xlabel("Epochs")
-    plt.ylabel("Gradient Norm")
-    plt.title("Gradient Norms")
-    plt.grid()
-    plt.legend()
+    # # Gradient Norms
+    # plt.subplot(3, 3, 6)
+    # plt.plot(epochs, gradient_norms, label="Gradient Norms", color='purple')
+    # plt.xlabel("Epochs")
+    # plt.ylabel("Gradient Norm")
+    # plt.title("Gradient Norms")
+    # plt.grid()
+    # plt.legend()
 
     plt.tight_layout()
     plt.show()
 
+    ## PLOTTING PER CLASS PRECISION AND RECALL
+    classes = ['Beach', 'Sunset', 'FallFoliage', 'Field', 'Mountain', 'Urban']
+    epochs = range(1, len(train_losses) + 1)
+    plt.figure(figsize=(16, 10))
+
+    i = 0
+    for key, value in alpha_per_c.items():
+        value = np.asarray(value)
+        i += 1
+        for c in range(value.shape[1]):
+            plt.subplot(6, 2, (i-1) * value.shape[1] +  c+1)
+            plt.plot(epochs, (value.T)[c], label=f"{key} {classes[c]}", color='purple' if key.startswith("precision") else 'green')
+            plt.xlabel("Epochs")
+            plt.ylabel(f"{key}")
+            plt.title(f"{key} {classes[c]}")
+            plt.grid()
+            plt.legend()
+
+    plt.tight_layout()
+    plt.show()
 
 # Main script
 if __name__ == "__main__":
@@ -459,321 +526,21 @@ if __name__ == "__main__":
         print(f"Epoch {epoch + 1}/{EPOCHS}")
         for class_idx in range(n_classes):
             print(f"  Class {class_idx} - F1 Score: {evaluator.val_f1_scores[class_idx][-1]:.4f}")
-        print(f"Alpha score: {evaluator.alpha_scores[-1]}")
+
+        print(f"Epoch {epoch + 1}/{EPOCHS} | Loss: {trainer.train_losses[-1]:.3f} "
+              f"| Hamming losses: {evaluator.val_hamming_losses[-1]:.3f} |"
+              f"| Lrap scores: {evaluator.lrap_scores[-1]:.3f} |"
+              f"| Overall macro avg F1 scores: {evaluator.overall_f1_scores[-1]:.3f} |"
+              f"Alpha score accuracy: {evaluator.alpha_scores[-1]:.3f}")
+
+    plot_metrics(trainer.train_losses, evaluator.overall_f1_scores, evaluator.val_hamming_losses,
+                 evaluator.lrap_scores, evaluator.alpha_scores, evaluator.per_class)
 
     # Final Evaluation
     preds, labels = evaluator.evaluate()
     preds_binary = (preds > BINARY_CRITERION).astype(int)
-    overall_f1 = f1_score(labels, preds_binary, average='macro')
+    overall_f1 = f1_score(labels, preds_binary, average='micro')
     print(f"\nOverall Micro F1 Score: {overall_f1:.4f}")
-    print(f"Overall Alpha score avg: {compute_alpha_score(preds_binary, labels)}")
-    print(f"Multi-label based alpha accuracy: {np.asarray(evaluator.alpha_scores).sum() / labels.size}")
-
-    epochs = range(1, len(evaluator.alpha_scores) + 1)
-
-    plt.figure(figsize=(16, 10))
-
-    # Training Loss
-    plt.subplot(1, 1, 1)
-    plt.plot(epochs, evaluator.alpha_scores, label="Training Loss", color='blue')
-    plt.xlabel("Epochs")
-    plt.ylabel("Loss")
-    plt.title("Training Loss")
-    plt.grid()
-    plt.legend()
-
-    plt.tight_layout()
-    plt.show()
-
-# if __name__ == "__main__":
-#     # Basic plain datasets (no transforms)
-#     train_loader, test_loader, class_weights = get_dataloaders()
-#
-#     # TODO: test this
-#     # Random horizontal flipping applied datasets (no transforms)
-#     # train_loader_flip, test_loader_flip = get_dataloaders(flipping=True)
-#
-#     examples = iter(train_loader)
-#     samples, labels = next(examples)
-#
-#     # TODO: correct
-#     input_dim = samples[0].shape[0]
-#     output_dim = labels[0].shape[0]
-#
-#
-#     model = NeuralNet(input_dim, output_dim)
-#     criterion = Criterion(type="SoftMarginMultilabel", weights=class_weights)
-#     optimizer = torch.optim.Adam(model.parameters(), lr=LR)
-#
-#     model_trainer = ModelTrainer(model, train_loader)
-#     model_evaluator = ModelEvaluator(model, test_loader)
-#
-#     # TRAIN LOOP
-#     for epoch in range(EPOCHS):
-#         model_trainer.train_model()
-#
-#         model_evaluator.evaluate_model()
-#         # model_evaluator.print_results(epoch)
-#         print(f"Epoch {epoch + 1}/{EPOCHS} | Loss: {model_trainer.train_losses[-1]:.3f} "
-#               f"| Micro F1: {model_evaluator.val_f1_scores[-1]:.3f} |"
-#               f"| Hamming losses: {model_evaluator.val_hamming_losses[-1]:.3f} |"
-#               f"| Subset Accuracies: {model_evaluator.val_subset_accuracies[-1]:.3f} |"
-#               f"| Lrap scores: {model_evaluator.lrap_scores[-1]:.3f} |"
-#               f" Grad Norm: {model_trainer.gradient_norms[-1]:.3f}")
+    print(f"Overall Alpha score: {compute_alpha_score(np.asarray([preds_binary]), np.asarray([labels]))}")
 
 
-
-    # # Plot metrics
-    # plot_metrics(model_trainer.train_losses, model_evaluator.val_f1_scores, model_evaluator.val_hamming_losses,
-    #              model_evaluator.val_subset_accuracies, model_evaluator.lrap_scores, model_trainer.gradient_norms)
-    #
-    #
-    # # Final evaluation
-    # y_true, y_pred = [], []
-    # model.eval()
-    # with torch.no_grad():
-    #     for batch_X, batch_y in test_loader:
-    #         outputs = model(batch_X)
-    #         y_true.append(batch_y.cpu().numpy())
-    #         y_pred.append(outputs.cpu().numpy())
-    #
-    # y_true = np.vstack(y_true)
-    # y_pred = np.vstack(y_pred)
-    # y_pred_binary = (y_pred > BINARY_CRITERION).astype(int)
-    #
-    # print("Classification Report:")
-    # for i, class_name in enumerate(['Beach', 'Sunset', 'FallFoliage', 'Field', 'Mountain', 'Urban']):
-    #     print(f"\nClass: {class_name}")
-    #     print(classification_report(y_true[:, i], y_pred_binary[:, i]))
-    #
-    # overall_roc_auc = roc_auc_score(y_true, y_pred, average='macro')
-    # print(f"\nOverall ROC AUC Score: {overall_roc_auc:.2f}")
-    #
-    #
-
-########################################################################################################################
-########################################################################################################################
-########################################################################################################################
-# WEIGHTED_LOSS = False
-#
-# def load(file: str):
-#     contents = arff.loadarff(file)
-#     df = pd.DataFrame(contents[0])
-#     return df
-#
-#
-# def process(df: pd.DataFrame):
-#     attr = [col for col in df.columns if col.startswith("attr")]
-#     classes = ['Beach', 'Sunset', 'FallFoliage', 'Field', 'Mountain', 'Urban']
-#
-#     data = df[attr].to_numpy(dtype=np.float32)
-#     targets = df[classes].apply(lambda s: s.map(int)).to_numpy(dtype=np.float32)
-#
-#     return data, targets
-#
-#
-#
-# def compute_class_weights(labels):
-#     """Compute class weights based on the inverse frequency of each class."""
-#     class_counts = labels.sum(axis=0)  # Sum over rows to count occurrences per class
-#     total_samples = labels.shape[0]
-#     class_weights = total_samples / (len(class_counts) * class_counts)
-#     return torch.tensor(class_weights, dtype=torch.float32).to(device)
-#
-#
-# # class MultiLabelClassifier(nn.Module):
-# #     def __init__(self, input_dim, output_dim):
-# #         super(MultiLabelClassifier, self).__init__()
-# #         self.model = nn.Sequential(
-# #             nn.Linear(input_dim, 128),
-# #             nn.ReLU(),
-# #             nn.Dropout(0.3),
-# #             nn.Linear(128, 64),
-# #             nn.ReLU(),
-# #             nn.Dropout(0.3),
-# #             nn.Linear(64, output_dim),
-# #             nn.Sigmoid()
-# #         )
-# #
-# #     def forward(self, x):
-# #         return self.model(x)
-#
-# # class MultiLabelClassifier(nn.Module):
-# #     def __init__(self, input_dim, output_dim):
-# #         super(MultiLabelClassifier, self).__init__()
-# #         self.model = nn.Sequential(
-# #             nn.Linear(input_dim, 256),
-# #             nn.ReLU(),
-# #             nn.Dropout(0.3),
-# #             nn.Linear(256, 128),
-# #             nn.ReLU(),
-# #             nn.Dropout(0.3),
-# #             nn.Linear(128, 64),
-# #             nn.ReLU(),
-# #             nn.Dropout(0.3),
-# #             nn.Linear(64, output_dim),
-# #             nn.Sigmoid()
-# #         )
-# #
-# #     def forward(self, x):
-# #         return self.model(x)
-# #
-#
-#
-# class MultiLabelClassifier(nn.Module):
-#     def __init__(self, input_dim, output_dim):
-#         super(MultiLabelClassifier, self).__init__()
-#         self.model = nn.Sequential(
-#             nn.Linear(input_dim, 512, device=device),
-#             nn.ReLU(),
-#             # nn.Dropout(0.3),
-#             nn.Linear(512, 256, device=device),
-#             nn.ReLU(),
-#             # nn.Dropout(0.3),
-#             nn.Linear(256, 128, device=device),
-#             nn.ReLU(),
-#             # nn.Dropout(0.3),
-#             nn.Linear(128, 64, device=device),
-#             nn.ReLU(),
-#             # nn.Dropout(0.3),
-#             nn.Linear(64, output_dim, device=device),
-#             nn.Sigmoid()
-#         )
-#
-#     def forward(self, x):
-#         return self.model(x)
-#
-#
-#
-# BATCH_SIZE = 16
-# LR = 0.001 # Learning rate
-# EPOCHS = 300
-#
-# TRAIN_TEST_SPLIT = 0.8
-# BINARY_CRITERION = 0.5
-#
-# if __name__ == "__main__":
-#     if torch.cuda.is_available():
-#         device = torch.device("cuda")
-#     else:
-#         device = torch.device("cpu")
-#
-#     df = load("../scene.arff")
-#     X, y = process(df)
-#     X_tensor = torch.tensor(X).to(device)
-#     y_tensor = torch.tensor(y).to(device)
-#
-#     # Split data
-#     dataset = TensorDataset(X_tensor, y_tensor)
-#     train_size = int(TRAIN_TEST_SPLIT * len(dataset))
-#     test_size = len(dataset) - train_size
-#     train_dataset, test_dataset = random_split(dataset, [train_size, test_size])
-#
-#
-#
-#     # Load data
-#     train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
-#     test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False)
-#
-#     if WEIGHTED_LOSS:
-#         class_weights = compute_class_weights(y[:train_size])
-#         print(f"Class weights: {class_weights.cpu().numpy()}")
-#     else:
-#         class_weights = None
-#     # Initialize the model, loss, and optimizer
-#
-#     if WEIGHTED_LOSS and class_weights is not None:
-#         criterion = nn.BCEWithLogitsLoss(pos_weight=class_weights)  # Weighted loss
-#     else:
-#         # criterion = nn.BCEWithLogitsLoss()  # Default loss
-#         criterion = nn.BCELoss()  # Binary cross entropy
-#     input_dim = X.shape[1]
-#     output_dim = y.shape[1]
-#     model = MultiLabelClassifier(input_dim, output_dim)
-#     optimizer = optim.Adam(model.parameters(), lr=LR)
-#
-#     # Training metrics
-#     train_losses = []
-#     val_accuracies = []
-#     val_f1_scores = []
-#     gradient_norms = []
-#
-#     for epoch in range(EPOCHS):
-#         model.train()
-#         epoch_loss = 0
-#         gradient_norm = 0
-#
-#         for batch_X, batch_y in train_loader:
-#             optimizer.zero_grad()
-#             outputs = model(batch_X)
-#             loss = criterion(outputs, batch_y)
-#             loss.backward()
-#
-#             # Compute gradient norm
-#             total_norm = 0
-#             for p in model.parameters():
-#                 if p.grad is not None:
-#                     total_norm += p.grad.data.norm(2).item() ** 2
-#             gradient_norm += total_norm ** 0.5
-#
-#             optimizer.step()
-#             epoch_loss += loss.item()
-#
-#         train_losses.append(epoch_loss / len(train_loader))
-#         gradient_norms.append(gradient_norm / len(train_loader))
-#
-#         # Validation phase
-#         model.eval()
-#         val_loss = 0.0
-#         all_preds = []
-#         all_labels = []
-#         correct, total = 0, 0
-#
-#         with torch.no_grad():
-#             for inputs, labels in test_loader:
-#                 outputs = model(inputs)
-#                 val_loss += criterion(outputs, labels).item()
-#
-#                 predictions = (outputs > BINARY_CRITERION).float()
-#                 all_preds.append(predictions.cpu().numpy())
-#                 all_labels.append(labels.cpu().numpy())
-#
-#                 correct += (predictions == labels).all(dim=1).sum().item()
-#                 total += labels.size(0)
-#
-#         val_accuracy = 100 * correct / total if total > 0 else 0
-#         val_accuracies.append(val_accuracy)
-#
-#         if all_preds and all_labels:
-#             all_preds = np.vstack(all_preds)
-#             all_labels = np.vstack(all_labels)
-#             val_f1 = f1_score(all_labels, all_preds, average='micro')
-#         else:
-#             val_f1 = 0
-#         val_f1_scores.append(val_f1)
-#
-#         print(f"Epoch {epoch + 1}/{EPOCHS} | Loss: {train_losses[-1]:.3f} | Val Acc: {val_accuracies[-1]:.2f}% | F1: {val_f1:.3f} | Grad Norm: {gradient_norms[-1]:.3f}")
-#
-#     # Plot metrics
-#     plot_metrics(train_losses, val_accuracies, val_f1_scores, gradient_norms)
-#
-#     # Final evaluation
-#     y_true, y_pred = [], []
-#     model.eval()
-#     with torch.no_grad():
-#         for batch_X, batch_y in test_loader:
-#             outputs = model(batch_X)
-#             y_true.append(batch_y.numpy())
-#             y_pred.append(outputs.numpy())
-#
-#     y_true = np.vstack(y_true)
-#     y_pred = np.vstack(y_pred)
-#     y_pred_binary = (y_pred > BINARY_CRITERION).astype(int)
-#
-#     print("Classification Report:")
-#     for i, class_name in enumerate(['Beach', 'Sunset', 'FallFoliage', 'Field', 'Mountain', 'Urban']):
-#         print(f"\nClass: {class_name}")
-#         print(classification_report(y_true[:, i], y_pred_binary[:, i]))
-#
-#     overall_roc_auc = roc_auc_score(y_true, y_pred, average='macro')
-#     print(f"\nOverall ROC AUC Score: {overall_roc_auc:.2f}")
