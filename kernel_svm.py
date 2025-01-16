@@ -60,12 +60,11 @@ def grid_search(X, y, *, verbose: bool = False):
     gammas = [np.power(n, i / 2) for i in range(-4, 0 + 1)]
     coef0 = [0, 1]
     kernels = {
-        "linear": {},
         "poly": {"degree": degrees, "gamma": gammas, "coef0": coef0},
         "rbf": {"gamma": gammas},
     }
 
-    kfold = KFold(n_splits=10, shuffle=True)
+    kfold = KFold(n_splits=10, shuffle=True, random_state=42)
     results = []
     for C in Cs:
         for kernel, options in kernels.items():
