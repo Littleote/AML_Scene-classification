@@ -92,4 +92,4 @@ if __name__ == "__main__":
         y_hat = svm(X_root4, y, **config)
         results.append(config | measures(y, y_hat, labels, **params))
     df = pd.DataFrame(results)
-    df.to_csv("multi_svm.csv", index=False)
+    df.to_csv("svm/multi_svm.csv", index=False)

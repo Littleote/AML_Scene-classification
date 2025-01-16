@@ -40,5 +40,5 @@ if __name__ == "__main__":
     config = {"class_weight": "balanced", "kernel": "rbf", "C": 1, "gamma": 1 / n}
     y_hat = svm(X, y, X_test, y_test, **config)
     out = measures(y_test, y_hat, labels, **params)
-    with open("final_svm.json", mode="w") as file:
+    with open("svm/final_svm.json", mode="w") as file:
         json.dump(out, file)

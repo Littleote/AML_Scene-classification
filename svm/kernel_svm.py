@@ -85,4 +85,4 @@ if __name__ == "__main__":
     X, _, y, labels = load_npy("scene_train.npy")
     y = y[:, labels == "Urban"].flatten()
     df = grid_search(X, y, verbose=True)
-    df.to_csv("kernel_svm.csv", index=False)
+    df.to_csv("svm/kernel_svm.csv", index=False)

@@ -82,4 +82,4 @@ if __name__ == "__main__":
         X_lowdim, y, verbose=True, transformation="PaCMAP", kernel="linear"
     )
     df = pd.concat([df_1, df_2, df_3])
-    df.to_csv("linear_svm.csv", index=False)
+    df.to_csv("svm/linear_svm.csv", index=False)
