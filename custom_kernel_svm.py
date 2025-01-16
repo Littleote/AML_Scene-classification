@@ -98,7 +98,7 @@ def grid_search(X, y, *, verbose: bool = False):
     for C in Cs:
         for scale in scales:
             for gamma in gammas:
-                svm = {"C": C, "kernel": "precomputed"}
+                svm = {"C": C, "kernel": "precomputed", "class_weight": "balanced"}
                 kernel = {"scale": scale, "gamma": gamma}
                 stats = run(X, y, kfold, kernel_args=kernel, svm_args=svm)
                 if verbose:
@@ -113,4 +113,4 @@ if __name__ == "__main__":
     X, _, y, labels = load_npy("scene_train.npy")
     y = y[:, labels == "Urban"].flatten()
     df = grid_search(X, y, verbose=True)
-    # df.to_csv("custom_kernel_svm.csv", index=False)
+    df.to_csv("custom_kernel_svm.csv", index=False)
