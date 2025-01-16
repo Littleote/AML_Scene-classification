@@ -57,14 +57,7 @@ def compute_class_weights(labels):
     return torch.tensor(class_weights, dtype=torch.float32).to(device)
 
 
-
-
-# TODO: img loading 49*2*3 | 49*3 or 49*6 reshaped
 class SceneDatasetOvA(Dataset):
-    """
-    Dataset class for 1-vs-all setup.
-    Each sample is replicated once per class for binary classification.
-    """
     def __init__(self, device, train=True, test_size=0.2):
         # Load and preprocess data
         df = load(DATA_PATH)
@@ -107,9 +100,6 @@ class SceneDatasetOvA(Dataset):
 
 
 def get_dataloaders_ova():
-    """
-    Create DataLoaders for the 1-vs-all setup.
-    """
     train_dataset = SceneDatasetOvA(device=device, train=True)
     test_dataset = SceneDatasetOvA(device=device, train=False)
 
@@ -123,18 +113,6 @@ def get_dataloaders_ova():
 
 class NeuralNet(nn.Module):
 
-    # def __init__(self, input_size, output_size):
-    #     super(NeuralNet, self).__init__()
-    #     self.model = nn.Sequential(
-    #         nn.Linear(input_size, 128, device=device),
-    #         nn.ReLU(),
-    #         # nn.Dropout(0.3),
-    #         nn.Linear(128, 64, device=device),
-    #         nn.ReLU(),
-    #         nn.Linear(64, output_size, device=device),
-    #         nn.Sigmoid()
-    #     )
-    #
     def __init__(self, input_dim, output_dim):
         super(NeuralNet, self).__init__()
         self.model = nn.Sequential(
@@ -157,60 +135,8 @@ class NeuralNet(nn.Module):
     def forward(self, x):
         return self.model(x)
 
-
-class Criterion(nn.Module):
-    def __init__(self, type="BCELoss", weights=None):
-        super(Criterion, self).__init__()
-        if type == "BCELoss":
-            self.loss = nn.BCELoss()
-        else:
-            self.loss = torch.nn.MultiLabelSoftMarginLoss() # weights
-
-    def forward(self, pred, target):
-        return ((pred - target)**2).mean()
-
 ########################################################################################################################
 # MODEL TRAINER
-
-
-class ModelTrainer:
-    def __init__(self, model, train_loader):
-        self.model = model
-        self.train_loader = train_loader
-
-        self.train_losses = []
-        self.gradient_norms = []
-
-    # TODO: add crosstraining
-    def train_model(self):
-
-        model.train()
-        epoch_loss = 0
-        gradient_norm = 0
-
-        for batch_X, batch_y in train_loader:
-            optimizer.zero_grad()
-            outputs = model(batch_X)
-            loss = criterion(outputs, batch_y) # predicted | actual
-
-            # Backprop
-            loss.backward()
-
-            # Compute gradient norm
-            total_norm = 0
-            for p in model.parameters():
-                if p.grad is not None:
-                    total_norm += p.grad.data.norm(2).item() ** 2
-            gradient_norm += total_norm ** 0.5
-
-            # GD
-            optimizer.step()
-            epoch_loss += loss.item()
-
-        self.train_losses.append(epoch_loss / len(train_loader))
-        self.gradient_norms.append(gradient_norm / len(train_loader))
-
-# Model Trainer for 1-vs-all setup
 class OvATrainer:
     """
     Handles training for multiple binary classifiers (1 per class).
@@ -253,9 +179,6 @@ def compute_alpha_score(predictions, labels, alpha=2.0, beta=1.0, gamma=0.25):
     diff_preds_sub_labels = predictions - labels
     diff_preds_sub_labels[diff_preds_sub_labels < 1] = 0
 
-    # missed = diff_labels_sub_preds.sum()
-    # false_positives = diff_preds_sub_labels.sum()
-
     missed = np.asarray([x.sum() for x in diff_labels_sub_preds[0]])
     false_positives = np.asarray([x.sum() for x in diff_preds_sub_labels[0]])
 
@@ -287,55 +210,6 @@ def compute_alpha_score(predictions, labels, alpha=2.0, beta=1.0, gamma=0.25):
     return accuracy_on_dataset, results
 
 
-class ModelEvaluator:
-    def __init__(self, model, test_loader, binary_threshold=0.5):
-        self.model = model
-        self.test_loader = test_loader
-        # self.criterion = criterion
-        self.binary_threshold = binary_threshold
-        self.val_f1_scores = []
-
-        self.val_hamming_losses = []
-        self.val_subset_accuracies = []
-        self.lrap_scores = []
-
-        self.results = dict()
-
-    def evaluate_model(self):
-        self.model.eval()
-        all_preds = []
-        all_labels = []
-        correct, total = 0, 0
-
-        with torch.no_grad():
-            for inputs, labels in self.test_loader:
-                # Forward pass
-                outputs = self.model(inputs)
-                # val_loss += self.criterion(outputs, labels).item()
-
-                # Convert outputs to binary predictions based on threshold
-                predictions = (outputs > self.binary_threshold).float()
-                all_preds.append(predictions.cpu().numpy())
-                all_labels.append(labels.cpu().numpy())
-
-        if all_preds and all_labels:
-            # Combine all predictions and labels
-            all_preds = np.vstack(all_preds)
-            all_labels = np.vstack(all_labels)
-
-            # Calculate metrics
-            val_f1_micro = f1_score(all_labels, all_preds, average='macro')
-            val_hamming_loss = hamming_loss(all_labels, all_preds)
-            val_subset_accuracy = accuracy_score(all_labels, all_preds)
-            lrap = label_ranking_average_precision_score(all_labels, all_preds)
-
-            # Save metrics
-            self.val_f1_scores.append(val_f1_micro)
-            self.val_hamming_losses.append(val_hamming_loss)
-            self.val_subset_accuracies.append(val_subset_accuracy)
-            self.lrap_scores.append(lrap)
-
-
 # Model Evaluator for 1-vs-all setup
 class OvAEvaluator:
     """
@@ -345,6 +219,7 @@ class OvAEvaluator:
         self.models = models
         self.test_loader = test_loader
         self.binary_threshold = binary_threshold
+        self.criterion = criterion
 
         # Metrics storage
         self.val_f1_scores = [[] for _ in models]
@@ -354,14 +229,16 @@ class OvAEvaluator:
 
         self.val_hamming_losses = []
         self.lrap_scores = []
+        self.val_losses = []
 
     def evaluate(self):
         all_preds = []
         all_labels = []
 
-
+        val_losses_all = []
         for class_idx, model in enumerate(self.models):
             model.eval()
+            val_loss = 0.0
             preds = []
             labels = []
 
@@ -371,6 +248,10 @@ class OvAEvaluator:
                     predictions = (outputs > self.binary_threshold).float()
                     preds.append(predictions.cpu().numpy())
                     labels.append(batch_labels[:, class_idx].unsqueeze(1).cpu().numpy())
+                    val_loss += self.criterion(outputs, batch_labels[:, class_idx].unsqueeze(1)).item()
+
+            avg_loss = val_loss / len(self.test_loader)
+            val_losses_all.append(avg_loss)
 
             preds = np.vstack(preds)
             labels = np.vstack(labels)
@@ -381,6 +262,7 @@ class OvAEvaluator:
             f1 = f1_score(labels, preds, average='binary')
             self.val_f1_scores[class_idx].append(f1)
 
+        self.val_losses.append(np.sum(np.asarray(val_losses_all)) / len(self.models))
 
         alpha, per_class = compute_alpha_score(np.asarray(all_preds).T, np.asarray(all_labels).T, 1.0, 1.0, 0.25)
         self.alpha_scores.append(alpha)
@@ -405,7 +287,7 @@ class OvAEvaluator:
 
 
 # Util plotting fnc
-def plot_metrics(train_losses, val_f1_scores, val_hamming_losses, lrap_scores, alpha_acc, alpha_per_c):
+def plot_metrics(train_losses, validation_losses, val_f1_scores, val_hamming_losses, lrap_scores, alpha_acc, alpha_per_c):
     epochs = range(1, len(train_losses) + 1)
 
     plt.figure(figsize=(16, 10))
@@ -419,17 +301,17 @@ def plot_metrics(train_losses, val_f1_scores, val_hamming_losses, lrap_scores, a
     plt.grid()
     plt.legend()
 
-    # Validation Accuracy
+    # # Validation Loss
     # plt.subplot(3, 3, 2)
-    # plt.plot(epochs, val_subset_accuracies, label="Validation Subset Accuracies", color='green')
+    # plt.plot(epochs, validation_losses, label="Validation Loss", color='green')
     # plt.xlabel("Epochs")
-    # plt.ylabel("Subset Accuracy")
-    # plt.title("Subset Accuracies")
+    # plt.ylabel("Validation Loss")
+    # plt.title("Validation Loss")
     # plt.grid()
     # plt.legend()
 
     plt.subplot(3, 3, 2)
-    plt.plot(epochs, alpha_acc, label="Alpha score accuracy", color='green')
+    plt.plot(epochs, alpha_acc, label="Alpha score accuracy", color='purple')
     plt.xlabel("Epochs")
     plt.ylabel("Alpha Accuracy")
     plt.title("Alpha score accuracy")
@@ -496,6 +378,24 @@ def plot_metrics(train_losses, val_f1_scores, val_hamming_losses, lrap_scores, a
     plt.tight_layout()
     plt.show()
 
+
+class EarlyStopper:
+    def __init__(self, patience=1, min_delta=0):
+        self.patience = patience
+        self.min_delta = min_delta
+        self.counter = 0
+        self.min_validation_loss = float('inf')
+
+    def early_stop(self, validation_loss):
+        if validation_loss < self.min_validation_loss:
+            self.min_validation_loss = validation_loss
+            self.counter = 0
+        elif validation_loss > (self.min_validation_loss + self.min_delta):
+            self.counter += 1
+            if self.counter >= self.patience:
+                return True
+        return False
+
 # Main script
 if __name__ == "__main__":
     # Load 1-vs-all DataLoaders
@@ -504,21 +404,22 @@ if __name__ == "__main__":
     examples = iter(train_loader)
     samples, labels = next(examples)
 
-    # TODO: correct
     input_dim = samples[0].shape[0]
     output_dim = labels[0].shape[0]
 
-    # Create a separate model, optimizer, and criterion for each class
+    # a separate model, optimizer, and criterion for each class
     n_classes = 6  # Number of classes
     models = [NeuralNet(input_dim, 1).to(device) for _ in range(n_classes)]
     optimizers = [torch.optim.Adam(model.parameters(), lr=LR) for model in models]
     criterion = nn.BCELoss()
 
-    # Trainers and Evaluators
+    # trainers and evaluators
     trainer = OvATrainer(models, train_loader, criterion, optimizers)
     evaluator = OvAEvaluator(models, test_loader)
 
-    # Train and evaluate
+    early_stopper = EarlyStopper(patience=5, min_delta=10)
+
+    # MAIN LOOP
     for epoch in range(EPOCHS):
         trainer.train_one_epoch()
         preds, labels = evaluator.evaluate()
@@ -527,13 +428,21 @@ if __name__ == "__main__":
         for class_idx in range(n_classes):
             print(f"  Class {class_idx} - F1 Score: {evaluator.val_f1_scores[class_idx][-1]:.4f}")
 
-        print(f"Epoch {epoch + 1}/{EPOCHS} | Loss: {trainer.train_losses[-1]:.3f} "
-              f"| Hamming losses: {evaluator.val_hamming_losses[-1]:.3f} |"
-              f"| Lrap scores: {evaluator.lrap_scores[-1]:.3f} |"
-              f"| Overall macro avg F1 scores: {evaluator.overall_f1_scores[-1]:.3f} |"
+        print(f"Epoch {epoch + 1}/{EPOCHS} | Training Loss: {trainer.train_losses[-1]:.3f} "
+              f"| Validation Loss: {evaluator.val_losses[-1]:.3f} "
+              f"| Hamming losses: {evaluator.val_hamming_losses[-1]:.3f} "
+              f"| Lrap scores: {evaluator.lrap_scores[-1]:.3f} "
+              f"| Overall macro avg F1 scores: {evaluator.overall_f1_scores[-1]:.3f} "
               f"Alpha score accuracy: {evaluator.alpha_scores[-1]:.3f}")
 
-    plot_metrics(trainer.train_losses, evaluator.overall_f1_scores, evaluator.val_hamming_losses,
+
+
+        if early_stopper.early_stop(evaluator.alpha_scores[-1]):
+            break
+
+    print(f"Best alpha accuracy: {early_stopper.min_validation_loss}")
+
+    plot_metrics(trainer.train_losses, evaluator.val_losses, evaluator.overall_f1_scores, evaluator.val_hamming_losses,
                  evaluator.lrap_scores, evaluator.alpha_scores, evaluator.per_class)
 
     # Final Evaluation

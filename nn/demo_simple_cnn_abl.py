@@ -242,7 +242,6 @@ class ModelTrainer:
         self.train_losses = []
         self.gradient_norms = []
 
-    # TODO: add crosstraining
     def train_model(self):
 
         model.train()
